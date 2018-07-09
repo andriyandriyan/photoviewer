@@ -1,20 +1,22 @@
 package com.sarriaroman.PhotoViewer;
 
+import uk.co.senab.photoview.PhotoViewAttacher;
+
 import android.app.Activity;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
-import android.net.Uri;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.StrictMode;
 import android.util.Base64;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+
+import android.content.Intent;
+import android.net.Uri;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -23,13 +25,11 @@ import com.squareup.picasso.Picasso;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Method;
-
-import uk.co.senab.photoview.PhotoViewAttacher;
 
 public class PhotoActivity extends Activity {
     private PhotoViewAttacher mAttacher;
@@ -42,9 +42,11 @@ public class PhotoActivity extends Activity {
 
     private TextView titleTxt;
 
+    private JSONArray imgList = null;
+    private int indexImg;
     private String mImage;
     private String mTitle;
-    private boolean mShare;
+    private JSONObject mOptions;
     private File mTempImage;
     private int shareBtnVisibility;
 
@@ -60,15 +62,16 @@ public class PhotoActivity extends Activity {
         findViews();
 
         try {
-            this.mImage = mArgs.getString(0);
             this.mTitle = mArgs.getString(1);
-            this.mShare = mArgs.getBoolean(2);
+            this.mOptions = mArgs.getJSONObject(2);
             //Set the share button visibility
-            shareBtnVisibility = this.mShare ? View.VISIBLE : View.INVISIBLE;
-
+            shareBtnVisibility = mOptions.getBoolean("share") ? View.VISIBLE : View.INVISIBLE;
+            imgList = mArgs.getJSONArray(0);
+            indexImg = mOptions.getInt("index");
+            this.mImage = this.imgList.getString(indexImg);
 
         } catch (JSONException exception) {
-            shareBtnVisibility = View.INVISIBLE;
+            shareBtnVisibility = View.VISIBLE;
         }
         shareBtn.setVisibility(shareBtnVisibility);
         //Change the activity title
@@ -89,17 +92,8 @@ public class PhotoActivity extends Activity {
         shareBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (Build.VERSION.SDK_INT >= 24) {
-                    try {
-                        Method m = StrictMode.class.getMethod("disableDeathOnFileUriExposure");
-                        m.invoke(null);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-
                 Uri imageUri;
-                if (mTempImage == null) {
+                if (mTempImage == null){
                     mTempImage = getLocalBitmapFileFromView(photo);
                 }
 
@@ -116,6 +110,36 @@ public class PhotoActivity extends Activity {
             }
         });
 
+		/**
+		 * Add Swipe Gesture To Change Image
+		 */
+        photo.setOnTouchListener(new OnSwipeTouchListener(PhotoActivity.this) {
+            public void onSwipeRight() {
+                if (indexImg > 0) {
+                    indexImg--;
+                    try {
+                        mImage = imgList.getString(indexImg);
+                        showLoading();
+                        loadImage();
+                    } catch (JSONException exception) {
+                        Log.d("SWIPE_LEFT", exception.toString());
+                    }
+                }
+            }
+            public void onSwipeLeft() {
+                int imageLength = imgList.length();
+                if (indexImg < imageLength - 1) {
+                    indexImg++;
+                    try {
+                        mImage = imgList.getString(indexImg);
+                        showLoading();
+                        loadImage();
+                    } catch (JSONException exception) {
+                        Log.d("SWIPE_RIGHT", exception.toString());
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -154,6 +178,14 @@ public class PhotoActivity extends Activity {
         shareBtn.setVisibility(shareBtnVisibility);
 
         mAttacher.update();
+    }
+
+	/**
+	 * Show Loading when first load image
+	 */
+    private void showLoading() {
+        photo.setVisibility(View.INVISIBLE);
+        loadingBar.setVisibility(View.VISIBLE);
     }
 
     /**
